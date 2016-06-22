@@ -1,0 +1,36 @@
+{
+  "name": "syncedmap",
+  "version": "0.0.1",
+  "description": "Map<K,V> synced to fs",
+  "main": "built/syncedmap.js",
+  "scripts": {
+    "test": "mocha built/",
+    "build": "tsc -p .",
+    "postinstall": "tsd install && tsc -p ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/D10221/syncedmap.git"
+  },
+  "keywords": [
+    "sync",
+    "fs",
+    "map",
+    "typescript"
+  ],
+  "author": "D10221",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/D10221/syncedmap/issues"
+  },
+  "homepage": "https://github.com/D10221/syncedmap#readme",
+  "dependencies": {
+    "chain": "git+https://github.com/D10221/chain.git",
+    "map-encoder": "git+https://github.com/D10221/map-encoder.git",
+    "rx": "^4.1.0"
+  },
+  "devDependencies": {
+    "chai": "^3.5.0",
+    "mocha": "^2.5.3"
+  }
+}

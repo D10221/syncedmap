@@ -2,11 +2,11 @@
   "name": "syncedmap",
   "version": "0.0.1",
   "description": "Map<K,V> synced to fs",
-  "main": "built/syncedmap.js",
+  "main": "built/index.js",
+  "typings": "built/index.d.ts",
   "scripts": {
     "test": "mocha built/",
-    "build": "tsc -p .",
-    "postinstall": "tsd install && tsc -p ."
+    "build": "tsc -p ."
   },
   "repository": {
     "type": "git",

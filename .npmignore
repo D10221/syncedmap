@@ -1,7 +1,5 @@
 node_modules/
-built/
 .idea/
 .vscode/
 *.log
 *.db
-*.tgz

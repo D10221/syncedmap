@@ -27,6 +27,7 @@
   "dependencies": {
     "chain": "git+https://github.com/D10221/chain.git",
     "map-encoder": "git+https://github.com/D10221/map-encoder.git",
+    "node-uuid": "^1.4.7",
     "rx": "^4.1.0"
   },
   "devDependencies": {

@@ -21,12 +21,16 @@ describe('syncedmap', () => {
         // 
     });
 
+    it('isError',()=>{        
+        assert.isTrue('Error' == syncedmap.errors.Empty.name );
+    }) 
+
     it('add/set/remove => sync to file', async () => {
         
-        this.timeout = 2500;
+        this.timeout = 3000;
 
         let service = syncedmap.factory.create<User>( user=> user.name , storePath);
-        //service.timeOut = 1500;
+        service.timeOut = 3000;
                
         await service.clear();
 

@@ -1,40 +1,40 @@
 import * as Rx from 'rx';
 import * as persist from './persist';
 import {Chain} from 'chain';
+let uuid = require('node-uuid');
 
-export type TKey = number | string | symbol;
+export type KeyType = number | string | symbol;
 
-export function isKey(x): x is TKey {
+export function isKey(x): x is KeyType {
     return 'string' == typeof (x) || 'number' == typeof x || 'symbol' == typeof x;
 }
 
-type Action = 'set' | 'add' | 'remove' | 'clean' | 'get';
+export type SvcAction = 'set' | 'add' | 'remove' | 'clear' | 'get' ;
 
 export type ChangeAction = 'set' | 'add' | 'remove' | 'clear';
 
+export type StoreEvent = 'add' | 'remove' | 'clear' | 'set' | 'dispose';
+
 export function isChange(key: string): key is ChangeAction {
-    for (let eKey of ['set', 'add', 'remove', 'clear']) {
+    for (let eKey of ['set', 'add', 'remove', 'clear', ]) {
         if (key == eKey) {
             return true;
         }
-    }
+    }    
     return false;
 }
 
-export type StoreEvent = 'add' | 'remove' | 'clear' | 'set';
-
-
-
-export class Service<TValue> {
+export class Service<TValue> implements Rx.Disposable {
     /**Maybe empty */
     location: string;
    
-
-    constructor(private getKey: (x: TValue) => TKey, map?: Map<TKey, TValue>) {
-        this._values = map || new Map<TKey, TValue>();
+    constructor(private getKey: (x: TValue) => KeyType, map?: Map<KeyType, TValue>) {
+        this._values = map || new Map<KeyType, TValue>();
     }
 
-    _values = new Map<TKey, TValue>();
+    private _values = new Map<KeyType, TValue>();
+
+    get values() : Map<KeyType, TValue> { return this._values;  }
 
     _events = new Rx.Subject<KeyValue>();
 
@@ -43,12 +43,14 @@ export class Service<TValue> {
     getEvent(event: StoreEvent): Rx.Observable<any> {
         return this.events.where(e => e.key == event).select(e => e.value);
     }
+    //short Alias
+    on = this.getEvent;
 
     publish(key: string, value: any) {
         this._events.onNext({ key: key, value: value });
     }
 
-    get(key: TKey): Promise<TValue> {
+    get(key: KeyType): Promise<TValue> {
         return new Promise((resolve, reject) => {
             try {
                 let user = this._values.get(key);
@@ -75,7 +77,7 @@ export class Service<TValue> {
         return this.addSetRemove('add', value, this);
     }
 
-    private validate(action: Action, key: TKey, value: TValue) {
+    private validate(action: SvcAction, key: KeyType, value: TValue) {
 
         if (action == 'add') {
             rejectEmpty(value);
@@ -99,7 +101,7 @@ export class Service<TValue> {
         }
     }
 
-    private internally(action: Action, value: TValue) {
+    private internally(action: SvcAction, value: TValue) {
         let key = this.getKey(value);
         this.validate(action, key, value);
         if (action == 'add' || action == 'set') {
@@ -112,7 +114,7 @@ export class Service<TValue> {
         }
     }
 
-    private addSetRemove<TReturn>(action: Action, value: TValue | TValue[], ret: TReturn): Promise<TReturn> {
+    private addSetRemove<TReturn>(action: SvcAction, value: TValue | TValue[], ret: TReturn): Promise<TReturn> {
 
         return new Promise((resolve, reject) => {
 
@@ -129,14 +131,22 @@ export class Service<TValue> {
                 if (changed) {
                     let onSave = (e: KeyValue) => {
                         if (isError(e.value)) {
+                            console.log(`Error: ${e.value.message}`);
                             reject(e.value);
                             return;
                         }
                         resolve(ret);
                     };
-                    let onError = e => reject(e);
-                    this.publish(action, value);
-                    this.onSave().subscribe(onSave, onError);
+                    let onError = e => {
+                        console.log(`Error: ${e.message}`);
+                        reject(e);
+                    } 
+                    
+                    let eventId = uuid.v4();
+                        
+                    this.persists(action, eventId );
+                    
+                    this.onSave(eventId).subscribe(onSave, onError);
                 };
 
             } catch (e) {
@@ -144,17 +154,24 @@ export class Service<TValue> {
             }
         })
     }
-    onSave(): Rx.Observable<any> {
+    persists(action:SvcAction, eventId: any){
+        this._events.onNext({key: action, value: { service: this , eventId: eventId } })
+    }
+
+    private onSave(eventId /*: uuid */): Rx.Observable<any> {
         return this.events
-            .where(e => e.key == 'save')
+            .where(e => 
+                e.key == 'save' &&
+                     // if no eventId provided , then any 
+                     (!eventId || e.value == eventId)) 
             .take(1)
             .timeout(this.timeOut);
     }
 
-    timeOut: number = 1000;
+    timeOut: number = 3000;
 
     clear(): Promise<this> {
-
+        let me = this; 
         return new Promise((resolve, reject) => {
 
             if (this.size == 0) {
@@ -169,18 +186,19 @@ export class Service<TValue> {
                 }
                 resolve(this);
             };
-            let onError = e => reject(e);
+            let onError = e => 
+                reject(e);
             
             this._values.clear();
-            this.publish('clear', this);
-
-            this.onSave().subscribe(onSave, onError);
+            let eventId = uuid.v4();
+            this.persists('clear', eventId);
+            this.onSave(eventId).subscribe(onSave, onError);
         });
 
     }
 
-    has(valueOrKey: TValue | TKey): boolean {
-        return isKey(valueOrKey) ? this._values.has(valueOrKey as TKey) : this._values.has(this.getKey(valueOrKey as TValue));
+    has(valueOrKey: TValue | KeyType): boolean {
+        return isKey(valueOrKey) ? this._values.has(valueOrKey as KeyType) : this._values.has(this.getKey(valueOrKey as TValue));
     }
 
     onChange(observer: Rx.Observer<any>): Rx.Disposable {
@@ -188,13 +206,28 @@ export class Service<TValue> {
             .merge(this.getEvent('set'))
             .merge(this.getEvent('remove'))
             .merge(this.getEvent('clear'))
-            .select(x => this)
+            //.select(x => this)
             .subscribe(observer);
     }
 
     get query(): Chain<TValue> { return new Chain(this._values.values()) }
 
     get size() { return this._values.size }
+
+    _disposed = false;
+
+    get disposed() {
+        return this._disposed;
+    }
+
+    dispose(){
+        if(this._disposed) throw AlreadyDisposed;
+        this.publish('dispose', this);
+        //
+        this._disposables.dispose();
+    }
+
+    _disposables = new Rx.CompositeDisposable();
 }
 
 function timeout(ok: Rx.Observable<any>, timeOut: number): Promise<boolean> {
@@ -222,13 +255,13 @@ function rejectEmpty(x: any) {
     }
 }
 
-function rejectExists<TValue>(svc: Service<TValue>, valueOrKey: TValue | TKey) {
+function rejectExists<TValue>(svc: Service<TValue>, valueOrKey: TValue | KeyType) {
     if (svc.has(valueOrKey)) {
         throw Exists;
     }
 }
 
-function rejectNotFound<TValue>(svc: Service<TValue>, valueOrKey: TValue | TKey) {
+function rejectNotFound<TValue>(svc: Service<TValue>, valueOrKey: TValue | KeyType) {
     if (!svc.has(valueOrKey)) {
         throw NotFound;
     }
@@ -244,12 +277,10 @@ export class StoreError extends Error {
 export const Empty = new StoreError('Null or Undefined', 400);
 export const NotFound = new StoreError('Not Found', 404);
 export const Exists = new StoreError('Exists', 409);
-
+export const AlreadyDisposed = new StoreError('Already Disposed', 500);
 
 function isError(e): e is Error {
-    let t = 'error' == typeof e;
-    let i = e instanceof Error;
-    return i || t;
+   return e && 'Error' == e.name
 }
 function isFunction(x): x is Function {
     return 'function' == typeof (x);

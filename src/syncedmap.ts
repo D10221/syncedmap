@@ -1,21 +1,21 @@
 import * as Rx from 'rx';
 import * as persist from './persist';
 import {Chain} from 'chain';
-import {KeyType, KeyValue ,StoreEvent , StoreEventKind, SvcAction, ChangeAction, isChange, isKey } from './common';
+import {KeyType, KeyValue, StoreEvent, StoreEventKind, SvcAction, ChangeAction, isChange, isKey } from './common';
 let uuid = require('node-uuid');
 
 
 export class Service<TValue> implements Rx.Disposable {
     /**Maybe empty */
     location: string;
-   
+
     constructor(private getKey: (x: TValue) => KeyType, map?: Map<KeyType, TValue>) {
         this._values = map || new Map<KeyType, TValue>();
     }
 
     private _values = new Map<KeyType, TValue>();
 
-    get values() : Map<KeyType, TValue> { return this._values;  }
+    get values(): Map<KeyType, TValue> { return this._values; }
 
     _events = new Rx.Subject<StoreEvent>();
 
@@ -28,8 +28,11 @@ export class Service<TValue> implements Rx.Disposable {
     //short Alias
     on = this.getEvent;
 
-    publish(key: string, value: any) {
-        this._events.onNext({ sender: this, args: { key: key, value: value }});
+    private publish(key: string, value: any) {
+        this._events.onNext({ sender: this, args: { key: key, value: value } });
+    }
+    public notify(sender: any, action: "save" | "whatever", value: any) {
+        this._events.onNext({ sender: sender, args: { key: action, value: value } });
     }
 
     get(key: KeyType): Promise<TValue> {
@@ -47,16 +50,16 @@ export class Service<TValue> implements Rx.Disposable {
         });
     }
 
-    set(value: TValue | TValue[]): Promise<this> {
-        return this.addSetRemove('set', value, this);
+    set(value: TValue | TValue[]): Promise<StoreEvent> {
+        return this.addSetRemove('set', value);
     }
 
-    remove(value: TValue | TValue[]): Promise<this> {
-        return this.addSetRemove('remove', value, this);
+    remove(value: TValue | TValue[]): Promise<StoreEvent> {
+        return this.addSetRemove('remove', value);
     }
 
-    add(value: TValue | TValue[]): Promise<this> {
-        return this.addSetRemove('add', value, this);
+    add(value: TValue | TValue[]): Promise<StoreEvent> {
+        return this.addSetRemove('add', value);
     }
 
     private validate(action: SvcAction, key: KeyType, value: TValue) {
@@ -96,9 +99,9 @@ export class Service<TValue> implements Rx.Disposable {
         }
     }
 
-    private addSetRemove<TReturn>(action: SvcAction, value: TValue | TValue[], ret: TReturn): Promise<TReturn> {
+    private addSetRemove<TReturn>(action: SvcAction, value: TValue | TValue[]): Promise<StoreEvent> {
 
-        return new Promise((resolve, reject) => {
+        return new Promise(async (resolve, reject) => {
 
             try {
 
@@ -111,70 +114,85 @@ export class Service<TValue> implements Rx.Disposable {
                 });
 
                 if (changed) {
-                    let onSave = (e: KeyValue) => {
-                        if (isError(e.value)) {
-                            console.log(`Error: ${e.value.message}`);
-                            reject(e.value);
-                            return;
-                        }
-                        resolve(ret);
-                    };
-                    let onError = e => {
-                        console.log(`Error: ${e.message}`);
-                        reject(e);
-                    } 
-                    
-                    let eventId = uuid.v4();
-                        
-                    this.persists(action, eventId );
-                    
-                    this.onSave(eventId).subscribe(onSave, onError);
+
+                    let e = await this.waitForPersists(action);
+                    if (isError(e.args.value)) {
+                        reject(e.args.value);
+                        return;
+                    }
+                    resolve(e);
                 };
 
-            } catch (e) {
-                reject(e);
+            } catch (error) {
+                console.log(`addSetRemove: Error: ${error.message}`);
+                reject(error);
             }
         })
     }
-    persists(action:SvcAction, eventId: any){
-        this._events.onNext({sender: this , args: {key: action, value:eventId } })
+
+    private persists(action: SvcAction, eventId: any) {
+        this._events.onNext({ sender: this, args: { key: action, value: eventId } })
     }
 
-    private onSave(eventId /*: uuid */): Rx.Observable<any> {
+    waitForPersists(action: SvcAction): Promise<StoreEvent> {
+        let me = this;
+        let eventId = uuid.v4();
+        return new Promise((resolve, reject) => {
+            let x = this.onSave(eventId);
+
+            // this line stops debugger  
+            if (this.timeOut > 0) {
+                x = x.timeout(this.timeOut);
+            }
+
+            x.subscribe((event) => {
+                resolve({ sender: me, args: event.args });
+            }, error => {
+                reject(error);
+            })
+            this.persists(action, eventId);
+        })
+    }
+
+    private onSave(eventId /*: uuid */): Rx.Observable<StoreEvent> {
         return this.events
-            .where(e => 
+            .where(e =>
                 e.args.key == 'save' &&
-                     // if no eventId provided , then any 
-                     (!eventId || e.args.value == eventId)) 
+                // if no eventId provided , then any ?
+                (!eventId || e.args.value == eventId))
             .take(1)
-            .timeout(this.timeOut);
+        //.timeout(this.timeOut);
     }
 
     timeOut: number = 3000;
 
-    clear(): Promise<this> {
-        let me = this; 
-        return new Promise((resolve, reject) => {
-
-            if (this.size == 0) {
-                resolve(this);
-                return;
-            }
-
-            let onSave = (e: KeyValue) => {
-                if (isError(e.value)) {
-                    reject(e.value);
+    clear(): Promise<StoreEvent> {
+        let me = this;
+        return new Promise(async (resolve, reject) => {
+            //...
+            try {
+                //..
+                if (this.size == 0) {
+                    resolve(this);
                     return;
                 }
-                resolve(this);
-            };
-            let onError = e => 
-                reject(e);
-            
-            this._values.clear();
-            let eventId = uuid.v4();            
-            this.onSave(eventId).subscribe(onSave, onError);
-            this.persists('clear', eventId);
+
+                this._values.clear();
+
+                let e = await this.waitForPersists('clear');
+
+                if (isError(e.args.value)) {
+                    reject(e.args.value);
+                    return;
+                }
+
+                resolve({ sender: me, args: e.args });
+                //...
+            } catch (error) {
+                console.log(`Clear: Error: ${error.message}`);
+                reject(error);
+            }
+            //...
         });
 
     }
@@ -202,8 +220,8 @@ export class Service<TValue> implements Rx.Disposable {
         return this._disposed;
     }
 
-    dispose(){
-        if(this._disposed) throw AlreadyDisposed;
+    dispose() {
+        if (this._disposed) throw AlreadyDisposed;
         this.publish('dispose', this);
         //
         this._disposables.dispose();
@@ -262,7 +280,7 @@ export const Exists = new StoreError('Exists', 409);
 export const AlreadyDisposed = new StoreError('Already Disposed', 500);
 
 function isError(e): e is Error {
-   return e && 'Error' == e.name
+    return e && 'Error' == e.name
 }
 function isFunction(x): x is Function {
     return 'function' == typeof (x);

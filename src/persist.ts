@@ -16,10 +16,10 @@ export async function onNext(event: StoreEvent ) {
         await encoder.serializeToFile(service.location, service.values )
     } catch (e) {
         console.log('Error: ${e.message}');
-        service.publish('save', e);
+        service.notify(this,'save', e);
     }   
 
-    service.publish('save', event.args.value /* uuid */ );
+    service.notify(this, 'save', event.args.value /* uuid */ );
 }
 
 export function onCompleted(){

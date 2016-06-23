@@ -30,7 +30,7 @@ describe('syncedmap', () => {
         this.timeout = 3000;
 
         let service = syncedmap.factory.create<User>( user=> user.name , storePath);
-        service.timeOut = 3000;
+        service.timeOut = 0;
                
         await service.clear();
 

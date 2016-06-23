@@ -1,28 +1,9 @@
 import * as Rx from 'rx';
 import * as persist from './persist';
 import {Chain} from 'chain';
+import {KeyType, KeyValue ,StoreEvent , StoreEventKind, SvcAction, ChangeAction, isChange, isKey } from './common';
 let uuid = require('node-uuid');
 
-export type KeyType = number | string | symbol;
-
-export function isKey(x): x is KeyType {
-    return 'string' == typeof (x) || 'number' == typeof x || 'symbol' == typeof x;
-}
-
-export type SvcAction = 'set' | 'add' | 'remove' | 'clear' | 'get' ;
-
-export type ChangeAction = 'set' | 'add' | 'remove' | 'clear';
-
-export type StoreEvent = 'add' | 'remove' | 'clear' | 'set' | 'dispose';
-
-export function isChange(key: string): key is ChangeAction {
-    for (let eKey of ['set', 'add', 'remove', 'clear', ]) {
-        if (key == eKey) {
-            return true;
-        }
-    }    
-    return false;
-}
 
 export class Service<TValue> implements Rx.Disposable {
     /**Maybe empty */
@@ -36,18 +17,19 @@ export class Service<TValue> implements Rx.Disposable {
 
     get values() : Map<KeyType, TValue> { return this._values;  }
 
-    _events = new Rx.Subject<KeyValue>();
+    _events = new Rx.Subject<StoreEvent>();
 
-    get events(): Rx.Observable<KeyValue> { return this._events.asObservable(); }
+    get events(): Rx.Observable<StoreEvent> { return this._events.asObservable(); }
 
-    getEvent(event: StoreEvent): Rx.Observable<any> {
-        return this.events.where(e => e.key == event).select(e => e.value);
+    getEvent(event: StoreEventKind): Rx.Observable<any> {
+        return this.events.where(e => e.args.key == event);
+        //.select(e => e.args.value);
     }
     //short Alias
     on = this.getEvent;
 
     publish(key: string, value: any) {
-        this._events.onNext({ key: key, value: value });
+        this._events.onNext({ sender: this, args: { key: key, value: value }});
     }
 
     get(key: KeyType): Promise<TValue> {
@@ -155,15 +137,15 @@ export class Service<TValue> implements Rx.Disposable {
         })
     }
     persists(action:SvcAction, eventId: any){
-        this._events.onNext({key: action, value: { service: this , eventId: eventId } })
+        this._events.onNext({sender: this , args: {key: action, value:eventId } })
     }
 
     private onSave(eventId /*: uuid */): Rx.Observable<any> {
         return this.events
             .where(e => 
-                e.key == 'save' &&
+                e.args.key == 'save' &&
                      // if no eventId provided , then any 
-                     (!eventId || e.value == eventId)) 
+                     (!eventId || e.args.value == eventId)) 
             .take(1)
             .timeout(this.timeOut);
     }
@@ -190,9 +172,9 @@ export class Service<TValue> implements Rx.Disposable {
                 reject(e);
             
             this._values.clear();
-            let eventId = uuid.v4();
-            this.persists('clear', eventId);
+            let eventId = uuid.v4();            
             this.onSave(eventId).subscribe(onSave, onError);
+            this.persists('clear', eventId);
         });
 
     }
@@ -287,9 +269,4 @@ function isFunction(x): x is Function {
 }
 function isIterator(x): x is IterableIterator<any> {
     return x && isFunction(x.next);
-}
-
-export interface KeyValue {
-    key: string;
-    value: any;
 }

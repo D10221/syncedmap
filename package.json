@@ -1,6 +1,6 @@
 {
   "name": "syncedmap",
-  "version": "0.0.1",
+  "version": "0.0.02",
   "description": "Map<K,V> synced to fs",
   "main": "built/index.js",
   "typings": "built/index.d.ts",

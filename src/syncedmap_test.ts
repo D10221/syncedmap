@@ -52,6 +52,31 @@ describe('syncedmap', () => {
         console.log('OK');
     })
 
+     it('add/set/remove => sync to file', async () => {
+        
+        this.timeout = 3000;
+
+        let service = syncedmap.factory.create<User>( user=> user.name , storePath);
+        service.timeOut = 0;
+               
+        await service.clear();
+                
+        await service.add({name:'admin', password: 'admin', email: 'admin@mail', roles:['admin']});
+        let admin = await service.get('admin');
+        assert.equal(admin.name, 'admin');
+
+        service.dispose();
+        
+        //reload from fs 
+        service = syncedmap.factory.create<User>( user=> user.name , storePath);
+        let other = await service.get('admin');
+        let eq = other.name == admin.name;
+        assert.isTrue(eq);
+        assert.deepEqual(admin,other);        
+
+        console.log('OK');
+    })
+
 })
 
  function readStore<T>(storePath) : T[] {

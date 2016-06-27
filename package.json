@@ -26,8 +26,8 @@
   "homepage": "https://github.com/D10221/syncedmap#readme",
   "dependencies": {
     "@reactivex/rxjs": "^5.0.0-beta.9",
-    "chain": "git+https://github.com/D10221/chain.git",
-    "map-encoder": "git+https://github.com/D10221/map-encoder.git",
+    "chain": "github:d10221/chain",
+    "map-encoder": "github:d10221/map-encoder",
     "node-uuid": "^1.4.7"
   },
   "devDependencies": {

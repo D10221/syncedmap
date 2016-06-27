@@ -2,6 +2,7 @@ node_modules/
 built/
 .idea/
 .vscode/
+typings/
 *.log
 *.db
 *.tgz

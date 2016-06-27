@@ -1,4 +1,3 @@
-import * as Rx from 'rx';
 import {Service} from './syncedmap';
 import { StoreEvent  } from './common';
 import * as encoder from 'map-encoder';

@@ -1,5 +1,4 @@
 import {assert} from 'chai';
-import * as Rx from 'rx';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as encoder from 'map-encoder';

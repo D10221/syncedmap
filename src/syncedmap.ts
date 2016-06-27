@@ -1,11 +1,15 @@
-import * as Rx from 'rx';
+import { Observable, Subject, Observer, Subscription, Subscriber} from '@reactivex/rxjs';
 import * as persist from './persist';
 import {Chain} from 'chain';
 import {KeyType, KeyValue, StoreEvent, StoreEventKind, SvcAction, ChangeAction, isChange, isKey } from './common';
 let uuid = require('node-uuid');
 
+export interface iDisposable {
+    dispose();
+    isDisposed: boolean;
+}
 
-export class Service<TValue> implements Rx.Disposable {
+export class Service<TValue> implements iDisposable {
     /**Maybe empty */
     location: string;
 
@@ -17,22 +21,22 @@ export class Service<TValue> implements Rx.Disposable {
 
     get values(): Map<KeyType, TValue> { return this._values; }
 
-    _events = new Rx.Subject<StoreEvent>();
+    _events = new Subject<StoreEvent>();
 
-    get events(): Rx.Observable<StoreEvent> { return this._events.asObservable(); }
+    get events(): Observable<StoreEvent> { return this._events.asObservable(); }
 
-    getEvent(event: StoreEventKind): Rx.Observable<any> {
-        return this.events.where(e => e.args.key == event);
+    getEvent(event: StoreEventKind): Observable<any> {
+        return this.events.filter(e => e.args.key == event);
         //.select(e => e.args.value);
     }
     //short Alias
     on = this.getEvent;
 
     private publish(key: string, value: any) {
-        this._events.onNext({ sender: this, args: { key: key, value: value } });
+        this._events.next({ sender: this, args: { key: key, value: value } });
     }
     public notify(sender: any, action: "save" | "whatever", value: any) {
-        this._events.onNext({ sender: sender, args: { key: action, value: value } });
+        this._events.next({ sender: sender, args: { key: action, value: value } });
     }
 
     get(key: KeyType): Promise<TValue> {
@@ -131,7 +135,7 @@ export class Service<TValue> implements Rx.Disposable {
     }
 
     private persists(action: SvcAction, eventId: any) {
-        this._events.onNext({ sender: this, args: { key: action, value: eventId } })
+        this._events.next({ sender: this, args: { key: action, value: eventId } })
     }
 
     waitForPersists(action: SvcAction): Promise<StoreEvent> {
@@ -154,9 +158,9 @@ export class Service<TValue> implements Rx.Disposable {
         })
     }
 
-    private onSave(eventId /*: uuid */): Rx.Observable<StoreEvent> {
+    private onSave(eventId /*: uuid */): Observable<StoreEvent> {
         return this.events
-            .where(e =>
+            .filter(e =>
                 e.args.key == 'save' &&
                 // if no eventId provided , then any ?
                 (!eventId || e.args.value == eventId))
@@ -201,7 +205,20 @@ export class Service<TValue> implements Rx.Disposable {
         return isKey(valueOrKey) ? this._values.has(valueOrKey as KeyType) : this._values.has(this.getKey(valueOrKey as TValue));
     }
 
-    onChange(observer: Rx.Observer<any>): Rx.Disposable {
+    onChange(next, error, completed): Subscription;
+    onChange(observer: Observer<any>): Subscription;
+    onChange(x): Subscription {
+
+        let createObserver = (args)=>{            
+            const onCompleted = args[2];
+            if(typeof onCompleted != 'function') { throw new Error('next: is Not A fucntion')};
+            const onError = args[1];
+            const onNext = args[0];
+            return new Subscriber(onNext, onError, onCompleted);
+        }
+
+        let observer: Observer<any> = arguments.length > 1 ?  createObserver(arguments) : x;
+
         return this.getEvent('add')
             .merge(this.getEvent('set'))
             .merge(this.getEvent('remove'))
@@ -216,21 +233,22 @@ export class Service<TValue> implements Rx.Disposable {
 
     _disposed = false;
 
-    get disposed() {
+    get isDisposed() {
         return this._disposed;
     }
 
     dispose() {
         if (this._disposed) throw AlreadyDisposed;
-        this.publish('dispose', this);
-        //
-        this._disposables.dispose();
+        this.publish('dispose', true);
+        if (this._disposables)
+            this._disposables.unsubscribe();
     }
 
-    _disposables = new Rx.CompositeDisposable();
+    _disposables: Subscription; //= new CompositeDisposable();
+
 }
 
-function timeout(ok: Rx.Observable<any>, timeOut: number): Promise<boolean> {
+function timeout(ok: Observable<any>, timeOut: number): Promise<boolean> {
 
     return new Promise((resolve, reject) => {
 

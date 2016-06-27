@@ -42,12 +42,7 @@ export class Service<TValue> implements iDisposable {
     get(key: KeyType): Promise<TValue> {
         return new Promise((resolve, reject) => {
             try {
-                let user = this._values.get(key);
-                if (user) {
-                    resolve(user);
-                    return;
-                }
-                reject(NotFound);
+               resolve(this._values.get(key));
             } catch (e) {
                 reject(e);
             }

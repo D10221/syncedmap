@@ -6,7 +6,8 @@ import * as persist from './persist';
 import { Observer } from '@reactivex/rxjs';
  
 function getStore<TKey, TValue>(storePath: string): Map<TKey, TValue> {
-    return fs.existsSync(storePath) ? encoder.deserializeFromFileSync<TKey, TValue>(storePath) : null
+    
+    return fs.existsSync(storePath) ? encoder.deserializeFromFileSync<TKey, TValue>(storePath, false) : null
 }
 /** Static Factory */
 export function create<TValue>( key: (x: TValue) => KeyType, storePath: string): Service<TValue> {

@@ -1,0 +1,1 @@
+import './syncedmap_test';
